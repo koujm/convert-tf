@@ -28,6 +28,7 @@ class RelativeBiases(tf.keras.layers.Layer):
     relative_biases = self.add_weight(
         name="relative_biases",
         shape=(self.max_relative_attention * 2 + 1,),
+        initializer="zeros",
         regularizer=self.regularizer,
         trainable=True)
 
