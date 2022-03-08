@@ -58,6 +58,8 @@ class SelfAttention(tf.keras.layers.Layer):
     self.max_relative_attention = max_relative_attention
     self.initializer = initializer
     self.regularizer = regularizer
+    
+    self.relative_biases = RelativeBiases(self.max_relative_attention)
   
   def build(self, input_shape):
     self.embedding_dim = input_shape[-1]
@@ -84,7 +86,6 @@ class SelfAttention(tf.keras.layers.Layer):
         regularizer=self.regularizer,
         trainable=True)
 
-    self.relative_biases = RelativeBiases(self.max_relative_attention)
 
   def call(self, inputs, unk_mask=None, training=None):
     # Hidden layers for query, key and value.
