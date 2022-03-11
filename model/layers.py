@@ -46,18 +46,21 @@ class SelfAttention(tf.keras.layers.Layer):
     max_relative_attention: Maximum distance that contributes to attention.
     initializer: Initializer for weights.
     regularizer: Regularizer for weights.
+    multi: Whether output is used for multi-headed attention.
   """
 
   def __init__(self,
                intermediate_dim,
                max_relative_attention,
                initializer="random_uniform",
-               regularizer="l2"):
+               regularizer="l2",
+               multi=None):
     super(SelfAttention, self).__init__()
     self.intermediate_dim = intermediate_dim
     self.max_relative_attention = max_relative_attention
     self.initializer = initializer
     self.regularizer = regularizer
+    self.multi = multi
     
     self.relative_biases = RelativeBiases(self.max_relative_attention)
   
@@ -79,27 +82,29 @@ class SelfAttention(tf.keras.layers.Layer):
         regularizer=self.regularizer,
         trainable=True)
 
-    self.value_weights = self.add_weight(
-        name="value_weights",
-        shape=(self.embedding_dim, self.embedding_dim),
-        initializer=self.initializer,
-        regularizer=self.regularizer,
-        trainable=True)
+    if not self.multi:
+      self.value_weights = self.add_weight(
+          name="value_weights",
+          shape=(self.embedding_dim, self.embedding_dim),
+          initializer=self.initializer,
+          regularizer=self.regularizer,
+          trainable=True)
 
 
-  def call(self, inputs, unk_mask=None, training=None):
+  def call(self, inputs, unk_mask, training=None):
     # Hidden layers for query, key and value.
     query = tf.tensordot(inputs, self.query_weights, axes=(2, 0))
     key = tf.tensordot(inputs, self.key_weights, axes=(2, 0))
-    value = tf.tensordot(inputs, self.value_weights, axes=(2, 0))
 
     query_key = tf.matmul(query, key, transpose_b=True)
     attention_scores = tf.math.truediv(
         query_key, tf.math.sqrt(float(self.embedding_dim))) 
 
-    if unk_mask is not None:
-      unk_mask = tf.expand_dims(unk_mask, axis=-2)
-      attention_scores = self._apply_mask(attention_scores, unk_mask)
+    unk_mask = tf.cast(unk_mask, inputs.dtype)
+    attention_scores = self._apply_mask(
+        attention_scores,
+        tf.expand_dims(unk_mask, axis=-2)
+        )
 
     if not training:
       # Prevent attention from future tokens when not training.
@@ -108,19 +113,82 @@ class SelfAttention(tf.keras.layers.Layer):
           dtype=inputs.dtype)
       keep = tf.math.minimum(self.max_relative_attention, self.max_length)
       causal_mask = tf.linalg.band_part(causal_mask, keep, keep)
-      causal_mask = tf.expand_dims(causal_mask, axis=0)
-      attention_scores = self._apply_mask(attention_scores, causal_mask)
+      attention_scores = self._apply_mask(
+          attention_scores,
+          tf.expand_dims(causal_mask, axis=0)
+          )
 
     attention_scores = self.relative_biases(attention_scores)
     attention_scores = tf.nn.softmax(attention_scores)
 
-    return tf.matmul(attention_scores, value)
+    if not self.multi:
+      value = tf.tensordot(inputs, self.value_weights, axes=(2, 0))
+      return tf.matmul(attention_scores, value)
+
+    return tf.squeeze(
+        tf.matmul(self._reduce_sqrtn(attention_scores, unk_mask), inputs)
+        )
 
   def _apply_mask(self, inputs, mask):
-    mask = tf.cast(mask, inputs.dtype)
     mask = 1 - mask
+
     if inputs.dtype is tf.float16:
       inputs -= 65504. * mask 
     else:
-      inputs -= 1.e9 * mask 
+      inputs -= 1.e9 * mask
+
     return inputs
+
+  def _reduce_sqrtn(self, scores, weights):
+    scores *= tf.expand_dims(weights, axis=-1) 
+    scores = tf.math.reduce_sum(scores, axis=-2, keepdims=True)
+
+    weights = tf.math.reduce_sum(weights, axis=-1, keepdims=True)
+    weights = tf.math.maximum(weights, 1)
+    weights = tf.math.rsqrt(weights)
+    weights = tf.expand_dims(weights, axis=-1)
+
+    return scores * weights
+    
+
+class MultiHeadAttention(tf.keras.layers.Layer):
+  """Multi-head attention layer that concatenates sub attention layer outputs.
+
+  Args:
+    num_heads: Number of attention heads.
+    intermediate_dim: Size of attention head for query and key.
+    max_relative_attention: Maximum distance that contributes to attention.
+    initializer: Initializer for weights.
+    regularizer: Regularizer for weights.
+  """
+
+  def __init__(self,
+               num_heads,
+               intermediate_dim,
+               max_relative_attention,
+               initializer="random_uniform",
+               regularizer="l2"):
+    super(MultiHeadAttention, self).__init__()
+
+    if num_heads <= 0:
+      raise ValueError("num_heads must be > 0")
+
+    self.attentions = []
+    for i in range(num_heads):
+      self.attentions.append(
+          SelfAttention(
+            intermediate_dim=intermediate_dim,
+            max_relative_attention=max_relative_attention,
+            initializer=initializer,
+            regularizer=regularizer,
+            multi=True)
+          )
+
+  def call(self, inputs, unk_mask, training=None):
+    outputs = []
+    for attention in self.attentions:
+      outputs.append(
+          attention(inputs, unk_mask, training=training)
+          )
+
+    return tf.concat(outputs, axis=-1)

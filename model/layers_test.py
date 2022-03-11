@@ -3,6 +3,7 @@ import numpy as np
 
 from model.layers import RelativeBiases
 from model.layers import SelfAttention
+from model.layers import MultiHeadAttention
 
 
 def is_toeplitz(matrix):
@@ -43,8 +44,25 @@ class SelfAttentionTest(tf.test.TestCase):
   def test_training(self):
     sa = SelfAttention(intermediate_dim=3, max_relative_attention=2)
     inputs = np.random.random((3, 4, 6))
-    output = sa(inputs, training=True)
+    mask = np.ones((3, 4))
+    mask[:,3] = 0
+    output = sa(inputs, unk_mask=mask, training=True)
     self.assertAllEqual(inputs.shape, output.shape)
+
+
+class MultiHeadAttentionTest(tf.test.TestCase):
+
+  def test_output_shape(self):
+    num_heads = 2
+    mha = MultiHeadAttention(
+        num_heads=num_heads,
+        intermediate_dim=3,
+        max_relative_attention=2)
+    inputs = np.random.random((3, 4, 6))
+    mask = np.ones((3, 4))
+    mask[:,3] = 0
+    output = mha(inputs, unk_mask=mask, training=True)
+    self.assertAllEqual((3, 6 * num_heads), output.shape)
 
 
 if __name__ == "__main__":
