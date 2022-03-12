@@ -4,6 +4,7 @@ import numpy as np
 from model.layers import RelativeBiases
 from model.layers import SelfAttention
 from model.layers import MultiHeadAttention
+from model.layers import TransformerBlock
 
 
 def is_toeplitz(matrix):
@@ -63,6 +64,20 @@ class MultiHeadAttentionTest(tf.test.TestCase):
     mask[:,3] = 0
     output = mha(inputs, unk_mask=mask, training=True)
     self.assertAllEqual((3, 6 * num_heads), output.shape)
+
+
+class TransformerBlockTest(tf.test.TestCase):
+
+  def test_output_shape(self):
+    tb = TransformerBlock(
+        intermediate_dim=3,
+        max_relative_attention=2,
+        hidden_dim=9)
+    inputs = np.random.random((3, 4, 6))
+    mask = np.ones((3, 4))
+    mask[:,3] = 0
+    output = tb(inputs, unk_mask=mask, training=True)
+    self.assertAllEqual(inputs.shape, output.shape)
 
 
 if __name__ == "__main__":

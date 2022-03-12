@@ -1,5 +1,7 @@
 import tensorflow as tf
 
+from model import activations
+
 
 class RelativeBiases(tf.keras.layers.Layer):
   """Attention bias that depends only on the relative positions.
@@ -192,3 +194,65 @@ class MultiHeadAttention(tf.keras.layers.Layer):
           )
 
     return tf.concat(outputs, axis=-1)
+
+
+class TransformerBlock(tf.keras.layers.Layer):
+  """Transformer block.
+
+  Args:
+    intermediate_dim: Size of attention head for query and key.
+    max_relative_attention: Maximum distance that contributes to attention.
+    hidden_dim: Hidden layer dimension after self attention.
+    initializer: Initializer for weights.
+    regularizer: Regularizer for weights.
+    activation: Activation function name to be used.
+  """
+
+  def __init__(self,
+               intermediate_dim,
+               max_relative_attention,
+               hidden_dim,
+               initializer="random_uniform",
+               regularizer="l2",
+               activation="fast_gelu"):
+    super(TransformerBlock, self).__init__()
+    self.attention = SelfAttention(
+        intermediate_dim=intermediate_dim,
+        max_relative_attention=max_relative_attention,
+        initializer=initializer,
+        regularizer=regularizer)
+    self.layer_norm_1 = tf.keras.layers.LayerNormalization()
+    self.layer_norm_2 = tf.keras.layers.LayerNormalization()
+    self.activation_fn = activations.get(activation)
+    
+    self.initializer = initializer
+    self.regularizer = regularizer
+    self.hidden_dim = hidden_dim
+
+  def build(self, input_shape):
+    self.embedding_dim = input_shape[-1]
+
+    self.weights_1 = self.add_weight(
+        name="weights_1",
+        shape=(self.embedding_dim, self.hidden_dim),
+        initializer=self.initializer,
+        regularizer=self.regularizer,
+        trainable=True)
+
+    self.weights_2 = self.add_weight(
+        name="weights_2",
+        shape=(self.hidden_dim, self.embedding_dim),
+        initializer=self.initializer,
+        regularizer=self.regularizer,
+        trainable=True)
+
+  def call(self, inputs, unk_mask, training=None):
+    output = self.attention(inputs, unk_mask, training=training)
+    output += inputs
+    output = self.layer_norm_1(output)
+    output = tf.tensordot(output, self.weights_1, axes=(2, 0))
+    output = self.activation_fn(output)
+    output = tf.tensordot(output, self.weights_2, axes=(2, 0))
+    output += inputs
+    output = self.layer_norm_2(output)
+    return output
