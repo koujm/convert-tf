@@ -18,26 +18,25 @@ class RelativeBiases(tf.keras.layers.Layer):
     self.max_relative_attention = max_relative_attention
     self.regularizer = regularizer
 
-  def build(self, input_shape):
-    # Relative positions can be represented by a toeplitz matrix.
-    row = tf.expand_dims(tf.range(input_shape[-1]), 0)
-    col = tf.expand_dims(tf.range(input_shape[-2]), 1)
-    toeplitz_matrix = row - col
-    toeplitz_matrix += self.max_relative_attention
-    relative_positions = tf.clip_by_value(
-        toeplitz_matrix, 0, self.max_relative_attention * 2)
-
-    relative_biases = self.add_weight(
+    self.relative_biases = self.add_weight(
         name="relative_biases",
         shape=(self.max_relative_attention * 2 + 1,),
         initializer="zeros",
         regularizer=self.regularizer,
         trainable=True)
 
-    self.bias = tf.identity(tf.gather(relative_biases, relative_positions))
-
   def call(self, inputs):
-    return inputs + tf.expand_dims(self.bias, axis=0)
+    # Relative positions can be represented by a toeplitz matrix.
+    row = tf.expand_dims(tf.range(inputs.shape[-1]), 0)
+    col = tf.expand_dims(tf.range(inputs.shape[-2]), 1)
+    toeplitz_matrix = row - col
+    toeplitz_matrix += self.max_relative_attention
+
+    relative_positions = tf.clip_by_value(
+        toeplitz_matrix, 0, self.max_relative_attention * 2)
+    bias = tf.identity(tf.gather(self.relative_biases, relative_positions))
+
+    return inputs + tf.expand_dims(bias, axis=0)
 
 
 class SelfAttention(tf.keras.layers.Layer):

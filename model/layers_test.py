@@ -21,14 +21,12 @@ class RelativeBiasesTest(tf.test.TestCase):
     rb = RelativeBiases(max_relative_attention=2)
     inputs = np.random.random((3, 4, 4))
     output = rb(inputs)
-    self.assertTrue(is_toeplitz(rb.bias))
     self.assertAllEqual(inputs.shape, output.shape)
 
   def test_higher_max_attention(self):
     rb = RelativeBiases(max_relative_attention=5)
     inputs = np.random.random((3, 4, 4))
     output = rb(inputs)
-    self.assertTrue(is_toeplitz(rb.bias))
     self.assertAllEqual(inputs.shape, output.shape)
 
 
