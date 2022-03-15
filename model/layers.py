@@ -27,8 +27,8 @@ class RelativeBiases(tf.keras.layers.Layer):
 
   def call(self, inputs):
     # Relative positions can be represented by a toeplitz matrix.
-    row = tf.expand_dims(tf.range(inputs.shape[-1]), 0)
-    col = tf.expand_dims(tf.range(inputs.shape[-2]), 1)
+    row = tf.expand_dims(tf.range(inputs.shape[-1]), axis=0)
+    col = tf.expand_dims(tf.range(inputs.shape[-2]), axis=1)
     toeplitz_matrix = row - col
     toeplitz_matrix += self.max_relative_attention
 
@@ -67,7 +67,6 @@ class SelfAttention(tf.keras.layers.Layer):
   
   def build(self, input_shape):
     self.embedding_dim = input_shape[-1]
-    self.max_length = input_shape[-2]
 
     self.query_weights = self.add_weight(
         name="query_weights",
@@ -109,10 +108,11 @@ class SelfAttention(tf.keras.layers.Layer):
 
     if not training:
       # Prevent attention from future tokens when not training.
+      max_length = inputs.shape[-2]
       causal_mask = tf.ones(
-          (self.max_length, self.max_length),
+          (max_length, max_length),
           dtype=inputs.dtype)
-      keep = tf.math.minimum(self.max_relative_attention, self.max_length)
+      keep = tf.math.minimum(self.max_relative_attention, max_length)
       causal_mask = tf.linalg.band_part(causal_mask, keep, keep)
       attention_scores = self._apply_mask(
           attention_scores,
@@ -255,3 +255,50 @@ class TransformerBlock(tf.keras.layers.Layer):
     output += inputs
     output = self.layer_norm_2(output)
     return output
+
+
+class PositionalEncodings(tf.keras.layers.Layer):
+  """Add positional encodings to input.
+
+  Args:
+    positional_dims: List of dimensions of positional encodings.
+    initializer: Initializer for weights.
+    regularizer: Regularizer for weights.
+  """
+
+  def __init__(self,
+               positional_dims,
+               initializer="random_uniform",
+               regularizer="l2"):
+    super(PositionalEncodings, self).__init__()
+    self.positional_dims = positional_dims
+    self.initializer = initializer
+    self.regularizer = regularizer
+
+  def build(self, input_shape):
+    self.embedding_dim = input_shape[-1]
+
+    self.positional_encodings = []
+    for i, positional_dim in enumerate(self.positional_dims):
+      self.positional_encodings.append(
+          self.add_weight(
+            name=f"positional_encoding_{i}",
+            shape=(positional_dim, self.embedding_dim),
+            initializer=self.initializer,
+            regularizer=self.regularizer,
+            trainable=True)
+          )
+
+  def call(self, inputs):
+    max_length = inputs.shape[-2]
+
+    projected_encodings = []
+    for positional_encoding in self.positional_encodings:
+      repeat = max_length // positional_encoding.shape[0] + 1
+      projected_encodings.append(
+          tf.tile(positional_encoding, multiples=(repeat, 1))[:max_length]
+          )
+
+    projected_encodings = tf.math.add_n(projected_encodings)
+    print(projected_encodings)
+    return inputs + tf.expand_dims(projected_encodings, axis=0)

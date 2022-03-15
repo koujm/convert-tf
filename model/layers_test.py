@@ -5,6 +5,7 @@ from model.layers import RelativeBiases
 from model.layers import SelfAttention
 from model.layers import MultiHeadAttention
 from model.layers import TransformerBlock
+from model.layers import PositionalEncodings
 
 
 def is_toeplitz(matrix):
@@ -75,6 +76,15 @@ class TransformerBlockTest(tf.test.TestCase):
     mask = np.ones((3, 4))
     mask[:,3] = 0
     output = tb(inputs, unk_mask=mask, training=True)
+    self.assertAllEqual(inputs.shape, output.shape)
+
+
+class PositionalEncodingsTest(tf.test.TestCase):
+
+  def test_positional_encodings(self):
+    pe = PositionalEncodings(positional_dims=(2, 3))
+    inputs = np.random.random((3, 5, 6))
+    output = pe(inputs)
     self.assertAllEqual(inputs.shape, output.shape)
 
 
