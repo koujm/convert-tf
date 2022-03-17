@@ -13,8 +13,9 @@ class RelativeBiases(tf.keras.layers.Layer):
 
   def __init__(self,
                max_relative_attention,
-               regularizer="l2"):
-    super(RelativeBiases, self).__init__()
+               regularizer="l2",
+               **kwargs):
+    super(RelativeBiases, self).__init__(**kwargs)
     self.max_relative_attention = max_relative_attention
     self.regularizer = regularizer
 
@@ -55,8 +56,9 @@ class SelfAttention(tf.keras.layers.Layer):
                max_relative_attention,
                initializer="random_uniform",
                regularizer="l2",
-               multi=None):
-    super(SelfAttention, self).__init__()
+               multi=None,
+               **kwargs):
+    super(SelfAttention, self).__init__(**kwargs)
     self.intermediate_dim = intermediate_dim
     self.max_relative_attention = max_relative_attention
     self.initializer = initializer
@@ -168,8 +170,9 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                intermediate_dim,
                max_relative_attention,
                initializer="random_uniform",
-               regularizer="l2"):
-    super(MultiHeadAttention, self).__init__()
+               regularizer="l2",
+               **kwargs):
+    super(MultiHeadAttention, self).__init__(**kwargs)
 
     if num_heads <= 0:
       raise ValueError("num_heads must be > 0")
@@ -213,8 +216,9 @@ class TransformerBlock(tf.keras.layers.Layer):
                hidden_dim,
                initializer="random_uniform",
                regularizer="l2",
-               activation="fast_gelu"):
-    super(TransformerBlock, self).__init__()
+               activation="fast_gelu",
+               **kwargs):
+    super(TransformerBlock, self).__init__(**kwargs)
     self.attention = SelfAttention(
         intermediate_dim=intermediate_dim,
         max_relative_attention=max_relative_attention,
@@ -269,8 +273,9 @@ class PositionalEncodings(tf.keras.layers.Layer):
   def __init__(self,
                positional_dims,
                initializer="random_uniform",
-               regularizer="l2"):
-    super(PositionalEncodings, self).__init__()
+               regularizer="l2",
+               **kwargs):
+    super(PositionalEncodings, self).__init__(**kwargs)
     self.positional_dims = positional_dims
     self.initializer = initializer
     self.regularizer = regularizer
