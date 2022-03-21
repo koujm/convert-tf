@@ -338,9 +338,13 @@ class HiddenLayer(tf.keras.layers.Layer):
     self.activation_fn = activations.get(activation)
 
   def build(self, input_shape):
-    if self.residual and self.hidden_dim != input_shape[-1]:
-      raise ValueError("hidden_dim should match input's last dimension "
-                       "for residual connection.")
+    if self.residual:
+      if self.hidden_dim is None:
+        self.hidden_dim = input_shape[-1]
+
+      if self.hidden_dim != input_shape[-1]:
+        raise ValueError("hidden_dim should match input's last dimension "
+                         "for residual connection.")
 
     self.w = self.add_weight(
         name="weights",
@@ -358,5 +362,69 @@ class HiddenLayer(tf.keras.layers.Layer):
 
     if self.layer_norm:
       output = self.layer_norm(output)
+
+    return output
+
+
+class FeatureEncoder(tf.keras.layers.Layer):
+  """Encode feature with hidden layers and skip connection.
+
+  Args:
+    num_hiddens: Number of hidden layers.
+    output_dim: Dimension of output's last axis.
+    initializer: Initializer for weights.
+    regularizer: Regularizer for weights.
+  """
+  def __init__(self,
+               num_hiddens,
+               output_dim,
+               initializer="orthogonal",
+               regularizer="l2",
+               **kwargs):
+    super(FeatureEncoder, self).__init__(**kwargs)
+    self.output_dim = output_dim
+    self.initializer = initializer
+    self.regularizer = regularizer
+
+    self.layer_norm_input = tf.keras.layers.LayerNormalization()
+    self.layer_norm_output = tf.keras.layers.LayerNormalization()
+
+    self.layers = []
+    for i in range(num_hiddens):
+      self.layers.append(
+          HiddenLayer(
+            initializer=initializer,
+            regularizer=regularizer)
+          )
+
+    self.layers.append(
+        HiddenLayer(
+            self.output_dim,
+            activation=None,
+            initializer=initializer,
+            regularizer=regularizer,
+            residual=False,
+            layer_norm=False)
+        )
+
+  def build(self, input_shape):
+    self.skip_weights = self.add_weight(
+        name="weights",
+        shape=(input_shape[-1], self.output_dim),
+        initializer=self.initializer,
+        regularizer=self.regularizer,
+        trainable=True)
+
+  def call(self, inputs):
+    output = self.layer_norm_input(inputs)
+
+    for layer in self.layers:
+      output = layer(output)
+
+    skip_connection = tf.matmul(inputs, self.skip_weights)
+    output += skip_connection
+
+    output = self.layer_norm_output(output)
+    output = tf.math.l2_normalize(output, axis=-1)
 
     return output

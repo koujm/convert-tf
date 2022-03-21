@@ -7,6 +7,7 @@ from model.layers import MultiHeadAttention
 from model.layers import TransformerBlock
 from model.layers import PositionalEncodings
 from model.layers import HiddenLayer
+from model.layers import FeatureEncoder
 
 
 def is_toeplitz(matrix):
@@ -102,6 +103,15 @@ class HiddenLayerTest(tf.test.TestCase):
     inputs = np.random.random((3, 6))
     output = hl(inputs)
     self.assertAllEqual(inputs.shape, output.shape)
+
+
+class FeatureEncoderTest(tf.test.TestCase):
+
+  def test_encode(self):
+    fe = FeatureEncoder(num_hiddens=3, output_dim=4)
+    inputs = np.random.random((3,6))
+    output = fe(inputs)
+    self.assertAllEqual((3, 4), output.shape)
 
 
 if __name__ == "__main__":
