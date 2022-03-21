@@ -6,6 +6,7 @@ from model.layers import SelfAttention
 from model.layers import MultiHeadAttention
 from model.layers import TransformerBlock
 from model.layers import PositionalEncodings
+from model.layers import HiddenLayer
 
 
 def is_toeplitz(matrix):
@@ -85,6 +86,21 @@ class PositionalEncodingsTest(tf.test.TestCase):
     pe = PositionalEncodings(positional_dims=(2, 3))
     inputs = np.random.random((3, 5, 6))
     output = pe(inputs)
+    self.assertAllEqual(inputs.shape, output.shape)
+
+
+class HiddenLayerTest(tf.test.TestCase):
+
+  def test_normal(self):
+    hl = HiddenLayer(hidden_dim=4, residual=False)
+    inputs = np.random.random((3, 6))
+    output = hl(inputs)
+    self.assertAllEqual((3, 4), output.shape)
+
+  def test_residual(self):
+    hl = HiddenLayer(residual=True)
+    inputs = np.random.random((3, 6))
+    output = hl(inputs)
     self.assertAllEqual(inputs.shape, output.shape)
 
 

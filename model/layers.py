@@ -305,5 +305,57 @@ class PositionalEncodings(tf.keras.layers.Layer):
           )
 
     projected_encodings = tf.math.add_n(projected_encodings)
-    print(projected_encodings)
     return inputs + tf.expand_dims(projected_encodings, axis=0)
+
+
+class HiddenLayer(tf.keras.layers.Layer):
+  """Hidden layer that also supports residual connnection and layer norm.
+
+  Args:
+    hidden_dim: Hidden layer dimension.
+    activation: Activation function name to be used.
+    initializer: Initializer for weights.
+    regularizer: Regularizer for weights.
+    residual: Whether to add residual connection.
+    layer_norm: Whether to add layer normalization.
+  """
+  def __init__(self,
+               hidden_dim=None,
+               activation="fast_gelu",
+               initializer="orthogonal",
+               regularizer="l2",
+               residual=True,
+               layer_norm=True,
+               **kwargs):
+    super(HiddenLayer, self).__init__(**kwargs)
+    self.hidden_dim = hidden_dim
+    self.initializer = initializer
+    self.regularizer = regularizer
+    self.residual = residual
+    self.layer_norm = (
+        tf.keras.layers.LayerNormalization()
+        if layer_norm else None)
+    self.activation_fn = activations.get(activation)
+
+  def build(self, input_shape):
+    if self.residual:
+      self.hidden_dim = input_shape[-1]
+
+    self.w = self.add_weight(
+        name="weights",
+        shape=(input_shape[-1], self.hidden_dim),
+        initializer=self.initializer,
+        regularizer=self.regularizer,
+        trainable=True)
+
+  def call(self, inputs):
+    output = tf.matmul(inputs, self.w)
+    output = self.activation_fn(output)
+
+    if self.residual:
+      output += inputs
+
+    if self.layer_norm:
+      output = self.layer_norm(output)
+
+    return output
