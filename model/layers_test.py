@@ -98,7 +98,7 @@ class HiddenLayerTest(tf.test.TestCase):
     self.assertAllEqual((3, 4), output.shape)
 
   def test_residual(self):
-    hl = HiddenLayer(residual=True)
+    hl = HiddenLayer(hidden_dim=6, residual=True)
     inputs = np.random.random((3, 6))
     output = hl(inputs)
     self.assertAllEqual(inputs.shape, output.shape)

@@ -338,8 +338,9 @@ class HiddenLayer(tf.keras.layers.Layer):
     self.activation_fn = activations.get(activation)
 
   def build(self, input_shape):
-    if self.residual:
-      self.hidden_dim = input_shape[-1]
+    if self.residual and self.hidden_dim != input_shape[-1]:
+      raise ValueError("hidden_dim should match input's last dimension "
+                       "for residual connection.")
 
     self.w = self.add_weight(
         name="weights",
