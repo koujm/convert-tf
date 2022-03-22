@@ -129,7 +129,8 @@ class SelfAttention(tf.keras.layers.Layer):
       return tf.matmul(attention_scores, value)
 
     return tf.squeeze(
-        tf.matmul(self._reduce_sqrtn(attention_scores, unk_mask), inputs)
+        tf.matmul(self._reduce_sqrtn(attention_scores, unk_mask), inputs),
+        axis=-2
         )
 
   def _apply_mask(self, inputs, mask):
