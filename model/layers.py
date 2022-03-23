@@ -49,6 +49,7 @@ class SelfAttention(tf.keras.layers.Layer):
     initializer: Initializer for weights.
     regularizer: Regularizer for weights.
     multi: Whether output is used for multi-headed attention.
+    dropout: Dropout rate.
   """
 
   def __init__(self,
@@ -57,6 +58,7 @@ class SelfAttention(tf.keras.layers.Layer):
                initializer="random_uniform",
                regularizer="l2",
                multi=None,
+               dropout=None,
                **kwargs):
     super(SelfAttention, self).__init__(**kwargs)
     self.intermediate_dim = intermediate_dim
@@ -66,6 +68,7 @@ class SelfAttention(tf.keras.layers.Layer):
     self.multi = multi
     
     self.relative_biases = RelativeBiases(self.max_relative_attention)
+    self.dropout = tf.keras.layers.Dropout(dropout) if dropout else None
   
   def build(self, input_shape):
     self.embedding_dim = input_shape[-1]
@@ -126,12 +129,17 @@ class SelfAttention(tf.keras.layers.Layer):
 
     if not self.multi:
       value = tf.tensordot(inputs, self.value_weights, axes=(2, 0))
-      return tf.matmul(attention_scores, value)
+      output = tf.matmul(attention_scores, value)
+    else:
+      output = tf.squeeze(
+          tf.matmul(self._reduce_sqrtn(attention_scores, unk_mask), inputs),
+          axis=-2
+          )
 
-    return tf.squeeze(
-        tf.matmul(self._reduce_sqrtn(attention_scores, unk_mask), inputs),
-        axis=-2
-        )
+    if self.dropout:
+      output = self.dropout(output, training=training)
+
+    return output
 
   def _apply_mask(self, inputs, mask):
     mask = 1 - mask
@@ -164,6 +172,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
     max_relative_attention: Maximum distance that contributes to attention.
     initializer: Initializer for weights.
     regularizer: Regularizer for weights.
+    dropout: Dropout rate.
   """
 
   def __init__(self,
@@ -172,6 +181,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                max_relative_attention,
                initializer="random_uniform",
                regularizer="l2",
+               dropout=None,
                **kwargs):
     super(MultiHeadAttention, self).__init__(**kwargs)
 
@@ -186,7 +196,8 @@ class MultiHeadAttention(tf.keras.layers.Layer):
             max_relative_attention=max_relative_attention,
             initializer=initializer,
             regularizer=regularizer,
-            multi=True)
+            multi=True,
+            dropout=dropout)
           )
 
   def call(self, inputs, unk_mask, training=None):
@@ -218,13 +229,15 @@ class TransformerBlock(tf.keras.layers.Layer):
                initializer="random_uniform",
                regularizer="l2",
                activation="fast_gelu",
+               dropout=None,
                **kwargs):
     super(TransformerBlock, self).__init__(**kwargs)
     self.attention = SelfAttention(
         intermediate_dim=intermediate_dim,
         max_relative_attention=max_relative_attention,
         initializer=initializer,
-        regularizer=regularizer)
+        regularizer=regularizer,
+        dropout=dropout)
     self.layer_norm_1 = tf.keras.layers.LayerNormalization()
     self.layer_norm_2 = tf.keras.layers.LayerNormalization()
     self.activation_fn = activations.get(activation)

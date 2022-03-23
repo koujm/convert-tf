@@ -19,6 +19,7 @@ HParams = namedtuple("HParams", (
   "max_attention_spans",
   "transformer_dims",
   "final_dim",
+  "dropout_rate",
   )
 )
 
@@ -60,14 +61,16 @@ class ConveRT(tf.keras.Model):
             intermediate_dim=self.hparams.transformer_dims[0],
             max_relative_attention=attention_span,
             hidden_dim=self.hparams.transformer_dims[1],
-            regularizer=self.regularizer)
+            regularizer=self.regularizer,
+            dropout=self.hparams.dropout_rate)
           )
 
     self.multihead_attention = MultiHeadAttention(
       num_heads=2,
       intermediate_dim=self.hparams.transformer_dims[0],
       max_relative_attention=self.hparams.max_attention_spans[-1],
-      regularizer=self.regularizer)
+      regularizer=self.regularizer,
+      dropout=self.hparams.dropout_rate)
 
     self.context_feat_encoder = FeatureEncoder(
       num_hiddens=3,
@@ -81,17 +84,33 @@ class ConveRT(tf.keras.Model):
 
   def call(self, inputs, training=False):
     with tf.name_scope("embed_context"):
-      context_embedding = self._embed_nl(
+      context_embedding, seq_encoding = self._embed_nl(
         inputs[self.hparams.context_feature], training)
 
     with tf.name_scope("embed_response"):
-      response_embedding = self._embed_nl(
+      response_embedding, _ = self._embed_nl(
         inputs[self.hparams.response_feature], training)
 
     encoded_context = self.context_feat_encoder(context_embedding)
     encoded_response = self.response_feat_encoder(response_embedding)
 
-    return tf.matmul(encoded_context, encoded_response, transpose_b=True)
+    pred = tf.matmul(encoded_context, encoded_response, transpose_b=True)
+
+    output = {"prediction": pred}
+
+    if not training:
+      output.update({
+        "sequence_encoding": tf.identity(
+          seq_encoding, name="sequence_encoding"),
+        "text_encoding": tf.identity(
+          context_embedding, name="text_encoding"),
+        "context_encoding": tf.identity(
+          encoded_context, name="context_encoding"),
+        "response_encoding": tf.identity(
+          encoded_response, name="response_encoding"),
+        })
+
+    return output
 
   def _embed_nl(self, inputs, training):
     with tf.name_scope("embed_nl"):
@@ -114,6 +133,8 @@ class ConveRT(tf.keras.Model):
       for transformer_block in self.transformer_blocks:
         x = transformer_block(x, unk_mask, training)
 
+      seq_encoding = x
+
       x = self.multihead_attention(x, unk_mask, training)
 
-      return x
+      return x, seq_encoding

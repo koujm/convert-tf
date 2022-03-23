@@ -8,7 +8,7 @@ from model.convert import ConveRT
 
 class ConvertTest(tf.test.TestCase):
 
-  def test_model(self):
+  def test_prediction(self):
     test_dir = os.path.join(
         os.path.dirname(__file__),
         "../test_data")
@@ -22,6 +22,7 @@ class ConvertTest(tf.test.TestCase):
         max_attention_spans=[2, 3, 4, 4],
         transformer_dims=[4, 16],
         final_dim=8,
+        dropout_rate=None,
         )
     model = ConveRT(hparams)
 
@@ -33,7 +34,7 @@ class ConvertTest(tf.test.TestCase):
         "response": random_text[-2:],
         }
 
-    output = model(inputs)
+    output = model(inputs)["prediction"]
 
     self.assertAllEqual((2, 2), output.shape)
 
