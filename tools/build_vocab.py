@@ -34,18 +34,22 @@ def encode(text):
     return []
 
   # Limit more than 4 consecutive digits. 
-  text = re.sub(r"\d{5,}", "#", text.lower())
+  text = re.sub(r"\d{5,}", "#", text.lower().strip())
 
   ret = []
   token_start = 0
   for pos in range(1, len(text)):
-    if text[pos].isalnum() != text[pos - 1].isalnum():
+    if text[pos].isalnum() != text[pos - 1].isalnum() or (
+        text[pos].strip() == ""):
       token = text[token_start:pos]
-      if token != " " or token_start == 0:
-        ret.append(token)
+      if token.strip() != "":
+        ret.append(token.strip())
       token_start = pos
-  final_token = text[token_start:]
-  ret.append(final_token)
+
+  if token_start < len(text):
+    final_token = text[token_start:]
+    ret.append(final_token.strip())
+
   return ret
 
 
@@ -53,7 +57,7 @@ def _get_text(filenames):
   for filename in filenames:
     with tf.io.gfile.GFile(filename) as f:
       while line := f.readline():
-        yield line.rstrip()
+        yield line.strip()
 
 
 def _save_vocab(vocab, path):
