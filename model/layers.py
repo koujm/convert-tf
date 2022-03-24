@@ -27,9 +27,11 @@ class RelativeBiases(tf.keras.layers.Layer):
         trainable=True)
 
   def call(self, inputs):
+    input_shape = tf.shape(inputs)
+
     # Relative positions can be represented by a toeplitz matrix.
-    row = tf.expand_dims(tf.range(inputs.shape[-1]), axis=0)
-    col = tf.expand_dims(tf.range(inputs.shape[-2]), axis=1)
+    row = tf.expand_dims(tf.range(input_shape[-1]), axis=0)
+    col = tf.expand_dims(tf.range(input_shape[-2]), axis=1)
     toeplitz_matrix = row - col
     toeplitz_matrix += self.max_relative_attention
 
@@ -113,7 +115,7 @@ class SelfAttention(tf.keras.layers.Layer):
 
     if not training:
       # Prevent attention from future tokens when not training.
-      max_length = inputs.shape[-2]
+      max_length = tf.shape(inputs)[-2]
       causal_mask = tf.ones(
           (max_length, max_length),
           dtype=inputs.dtype)
@@ -309,7 +311,7 @@ class PositionalEncodings(tf.keras.layers.Layer):
           )
 
   def call(self, inputs):
-    max_length = inputs.shape[-2]
+    max_length = tf.shape(inputs)[-2]
 
     projected_encodings = []
     for positional_encoding in self.positional_encodings:
