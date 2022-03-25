@@ -52,17 +52,19 @@ class ConveRT(tf.keras.Model):
         positional_dims=(47, 11),
         regularizer=self.regularizer)
     
-    self.layer_norm_input = tf.keras.layers.LayerNormalization()
+    self.layer_norm_input = tf.keras.layers.LayerNormalization(
+        name="layer_norm_input")
 
     self.transformer_blocks = []
-    for attention_span in self.hparams.max_attention_spans:
+    for i, attention_span in enumerate(self.hparams.max_attention_spans):
       self.transformer_blocks.append(
           TransformerBlock(
             intermediate_dim=self.hparams.transformer_dims[0],
             max_relative_attention=attention_span,
             hidden_dim=self.hparams.transformer_dims[1],
             regularizer=self.regularizer,
-            dropout=self.hparams.dropout_rate)
+            dropout=self.hparams.dropout_rate,
+            name=f"transformer_block_{i}")
           )
 
     self.multihead_attention = MultiHeadAttention(
@@ -70,7 +72,8 @@ class ConveRT(tf.keras.Model):
       intermediate_dim=self.hparams.transformer_dims[0],
       max_relative_attention=self.hparams.max_attention_spans[-1],
       regularizer=self.regularizer,
-      dropout=self.hparams.dropout_rate)
+      dropout=self.hparams.dropout_rate,
+      name="multi_head_attention")
 
     self.context_feat_encoder = FeatureEncoder(
       num_hiddens=3,
@@ -109,7 +112,9 @@ class ConveRT(tf.keras.Model):
         "sequence_encoding": tf.identity(
           seq_encoding, name="sequence_encoding"),
         "text_encoding": tf.identity(
-          context_embedding, name="text_encoding"),
+          tf.math.l2_normalize(
+            context_embedding, axis=-1, name="normalize_text"),
+          name="text_encoding"),
         "context_encoding": tf.identity(
           encoded_context, name="context_encoding"),
         "response_encoding": tf.identity(
@@ -197,10 +202,11 @@ class ConveRT(tf.keras.Model):
 def get_compiled_model(vocab_path,
                        context_feature,
                        response_feature,
+                       max_steps,
                        steps_per_execution=1):
   optimizer = tf.keras.optimizers.Adadelta(
     learning_rate=tf.keras.optimizers.schedules.CosineDecay(
-      initial_learning_rate=1., decay_steps=100000, alpha=0.001),
+      initial_learning_rate=1., decay_steps=max_steps, alpha=0.001),
     rho=0.9,
     )
 

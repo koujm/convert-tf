@@ -69,7 +69,9 @@ class SelfAttention(tf.keras.layers.Layer):
     self.regularizer = regularizer
     self.multi = multi
     
-    self.relative_biases = RelativeBiases(self.max_relative_attention)
+    self.relative_biases = RelativeBiases(
+        self.max_relative_attention,
+        name="relative_biases")
     self.dropout = tf.keras.layers.Dropout(dropout) if dropout else None
   
   def build(self, input_shape):
@@ -199,7 +201,8 @@ class MultiHeadAttention(tf.keras.layers.Layer):
             initializer=initializer,
             regularizer=regularizer,
             multi=True,
-            dropout=dropout)
+            dropout=dropout,
+            name=f"self_attention_head_{i}")
           )
 
   def call(self, inputs, unk_mask, training=None):
@@ -239,9 +242,12 @@ class TransformerBlock(tf.keras.layers.Layer):
         max_relative_attention=max_relative_attention,
         initializer=initializer,
         regularizer=regularizer,
-        dropout=dropout)
-    self.layer_norm_1 = tf.keras.layers.LayerNormalization()
-    self.layer_norm_2 = tf.keras.layers.LayerNormalization()
+        dropout=dropout,
+        name="self_attention")
+    self.layer_norm_1 = tf.keras.layers.LayerNormalization(
+        name="layer_norm_1")
+    self.layer_norm_2 = tf.keras.layers.LayerNormalization(
+        name="layer_norm_2")
     self.activation_fn = activations.get(activation)
     
     self.initializer = initializer
@@ -349,7 +355,7 @@ class HiddenLayer(tf.keras.layers.Layer):
     self.regularizer = regularizer
     self.residual = residual
     self.layer_norm = (
-        tf.keras.layers.LayerNormalization()
+        tf.keras.layers.LayerNormalization(name="layer_norm")
         if layer_norm else None)
     self.activation_fn = activations.get(activation)
 
@@ -402,15 +408,18 @@ class FeatureEncoder(tf.keras.layers.Layer):
     self.initializer = initializer
     self.regularizer = regularizer
 
-    self.layer_norm_input = tf.keras.layers.LayerNormalization()
-    self.layer_norm_output = tf.keras.layers.LayerNormalization()
+    self.layer_norm_input = tf.keras.layers.LayerNormalization(
+        name="layer_norm_input")
+    self.layer_norm_output = tf.keras.layers.LayerNormalization(
+        name="layer_norm_output")
 
     self.layers = []
     for i in range(num_hiddens):
       self.layers.append(
           HiddenLayer(
             initializer=initializer,
-            regularizer=regularizer)
+            regularizer=regularizer,
+            name=f"hidden_layer_{i}")
           )
 
     self.layers.append(
@@ -420,7 +429,8 @@ class FeatureEncoder(tf.keras.layers.Layer):
             initializer=initializer,
             regularizer=regularizer,
             residual=False,
-            layer_norm=False)
+            layer_norm=False,
+            name="final")
         )
 
   def build(self, input_shape):

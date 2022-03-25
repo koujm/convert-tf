@@ -13,7 +13,8 @@ def fast_gelu(x):
   Reference:
     - [Gaussian Error Linear Units (GELUs)](https://arxiv.org/abs/1606.08415)
   """
-  return x * tf.math.sigmoid(1.702 * x)
+  with tf.name_scope("fast_gelu"):
+    return x * tf.math.sigmoid(1.702 * x)
 
 
 def get(identifier):
