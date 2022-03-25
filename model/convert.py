@@ -169,3 +169,42 @@ class ConveRT(tf.keras.Model):
     self.compute_loss(x, y, y_pred)
 
     return self.compute_metrics(x, y, y_pred, sample_weight=None)
+
+
+def get_compiled_model(vocab_path,
+                       context_feature,
+                       response_feature,
+                       steps_per_execution=1):
+  optimizer = tf.keras.optimizers.Adadelta(
+    learning_rate=tf.keras.optimizers.schedules.CosineDecay(
+      initial_learning_rate=1, decay_steps=100000, alpha=0.001),
+    rho=0.9,
+    )
+
+  loss = tf.keras.losses.CategoricalCrossentropy(
+    from_logits=True,
+    label_smoothing=0.2,
+  )
+
+  hparams = HParams(
+      vocab_path=vocab_path,
+      context_feature=context_feature,
+      response_feature=response_feature,
+      max_sequence_length=60,
+      embedding_size=512,
+      max_attention_spans=[3, 5, 48, 48, 48, 48],
+      transformer_dims=[64, 2048],
+      final_dim=512,
+      dropout_rate=None,
+      )
+
+  model = ConveRT(hparams)
+  model.compile(
+      optimizer=optimizer,
+      loss={"prediction": loss},
+      metrics={"prediction": tf.keras.metrics.CategoricalAccuracy()},
+      steps_per_execution=steps_per_execution,
+      jit_compile=True,
+      )
+
+  return model
