@@ -75,26 +75,32 @@ class ConveRT(tf.keras.Model):
     self.context_feat_encoder = FeatureEncoder(
       num_hiddens=3,
       output_dim=self.hparams.final_dim,
-      regularizer=self.regularizer)
+      regularizer=self.regularizer,
+      name="encode_context")
 
     self.response_feat_encoder = FeatureEncoder(
       num_hiddens=3,
       output_dim=self.hparams.final_dim,
-      regularizer=self.regularizer)
+      regularizer=self.regularizer,
+      name="encode_response")
 
   def call(self, inputs, training=False):
     with tf.name_scope("embed_context"):
       context_embedding, seq_encoding = self._embed_nl(
-        inputs[self.hparams.context_feature], training)
+          inputs[self.hparams.context_feature], training)
 
     with tf.name_scope("embed_response"):
       response_embedding, _ = self._embed_nl(
-        inputs[self.hparams.response_feature], training)
+          inputs[self.hparams.response_feature], training)
 
     encoded_context = self.context_feat_encoder(context_embedding)
     encoded_response = self.response_feat_encoder(response_embedding)
 
-    pred = tf.matmul(encoded_context, encoded_response, transpose_b=True)
+    pred = tf.matmul(
+        encoded_context,
+        encoded_response,
+        transpose_b=True,
+        name="prediction")
 
     output = {"prediction": pred}
 
@@ -120,7 +126,12 @@ class ConveRT(tf.keras.Model):
       x = x.to_tensor(default_value=UNK_ID)
 
       if training:
-        x = x[:,:tf.math.minimum(x.shape[1]), self.hparams.max_sequence_length]
+        x = x[
+            :,
+            :tf.math.minimum(
+              tf.shape(x)[1],
+              self.hparams.max_sequence_length)
+            ]
 
       unk_mask = tf.math.not_equal(x, UNK_ID)      
 
@@ -143,32 +154,44 @@ class ConveRT(tf.keras.Model):
     x = data
 
     with tf.GradientTape() as tape:
-      model = self(x, training=True)
-      y_pred = model["prediction"]
-      y = tf.eye(y_pred.shape[0])
-      loss = self.compute_loss(x, y, y_pred)
+      output = self(x, training=True)
+      y_pred = output["prediction"]
+      y = tf.eye(y_pred.shape[0], name="label")
 
-    trainable_vars = self.trainable_variables
-    gradients = tape.gradient(loss, trainable_vars)
+      with tf.name_scope("loss"):
+        loss = self.compute_loss(x, y, y_pred)
 
-    grads_and_vars = [
-        (tf.clip_by_value(grad, -1, 1), var)
-        if "SubwordEmbedding" in var.name
-        else (grad, var)
-        for grad, var in zip(gradients, trainable_vars)
-        ]
-    self.optimizer.apply_gradients(grads_and_vars)
+    with tf.name_scope("gradients"):
+      trainable_vars = self.trainable_variables
+      gradients = tape.gradient(loss, trainable_vars)
 
-    return self.compute_metrics(x, y, y_pred, sample_weight=None)
+      grads_and_vars = [
+          (tf.clip_by_value(grad, -1, 1), var)
+          if "SubwordEmbedding" in var.name
+          else (grad, var)
+          for grad, var in zip(gradients, trainable_vars)
+          ]
+      self.optimizer.apply_gradients(grads_and_vars)
+
+    with tf.name_scope("metrics"):
+      metrics = self.compute_metrics(x, y, y_pred, sample_weight=None)
+
+    return metrics
 
   def test_step(self, data):
     x = data
-    model = self(x, training=False)
-    y_pred = model["prediction"]
-    y = tf.eye(y_pred.shape[0])
-    self.compute_loss(x, y, y_pred)
 
-    return self.compute_metrics(x, y, y_pred, sample_weight=None)
+    output = self(x, training=False)
+    y_pred = output["prediction"]
+    y = tf.eye(y_pred.shape[0], name="label")
+
+    with tf.name_scope("loss"):
+      self.compute_loss(x, y, y_pred)
+
+    with tf.name_scope("metrics"):
+      metrics = self.compute_metrics(x, y, y_pred, sample_weight=None)
+
+    return metrics
 
 
 def get_compiled_model(vocab_path,
@@ -177,7 +200,7 @@ def get_compiled_model(vocab_path,
                        steps_per_execution=1):
   optimizer = tf.keras.optimizers.Adadelta(
     learning_rate=tf.keras.optimizers.schedules.CosineDecay(
-      initial_learning_rate=1, decay_steps=100000, alpha=0.001),
+      initial_learning_rate=1., decay_steps=100000, alpha=0.001),
     rho=0.9,
     )
 
@@ -198,13 +221,12 @@ def get_compiled_model(vocab_path,
       dropout_rate=None,
       )
 
-  model = ConveRT(hparams)
+  model = ConveRT(hparams, name="ConveRT")
   model.compile(
       optimizer=optimizer,
-      loss={"prediction": loss},
-      metrics={"prediction": tf.keras.metrics.CategoricalAccuracy()},
+      loss=loss,
+      metrics=tf.keras.metrics.CategoricalAccuracy(),
       steps_per_execution=steps_per_execution,
-      jit_compile=True,
       )
 
   return model
