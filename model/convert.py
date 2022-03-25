@@ -6,7 +6,6 @@ import tensorflow_text as tf_text
 from model.layers import MultiHeadAttention
 from model.layers import TransformerBlock
 from model.layers import PositionalEncodings
-from model.layers import HiddenLayer
 from model.layers import FeatureEncoder
 
 
@@ -46,7 +45,8 @@ class ConveRT(tf.keras.Model):
     self.embedding_layer = tf.keras.layers.Embedding(
       input_dim=len(vocab),
       output_dim=self.hparams.embedding_size,
-      embeddings_regularizer=self.regularizer)
+      embeddings_regularizer=self.regularizer,
+      name="SubwordEmbedding")
 
     self.positional_encoding = PositionalEncodings(
         positional_dims=(47, 11),
@@ -138,3 +138,34 @@ class ConveRT(tf.keras.Model):
       x = self.multihead_attention(x, unk_mask, training)
 
       return x, seq_encoding
+
+  def train_step(self, data):
+    x = data
+
+    with tf.GradientTape() as tape:
+      model = self(x, training=True)
+      y_pred = model["prediction"]
+      y = tf.eye(y_pred.shape[0])
+      loss = self.compute_loss(x, y, y_pred)
+
+    trainable_vars = self.trainable_variables
+    gradients = tape.gradient(loss, trainable_vars)
+
+    grads_and_vars = [
+        (tf.clip_by_value(grad, -1, 1), var)
+        if "SubwordEmbedding" in var.name
+        else (grad, var)
+        for grad, var in zip(gradients, trainable_vars)
+        ]
+    self.optimizer.apply_gradients(grads_and_vars)
+
+    return self.compute_metrics(x, y, y_pred, sample_weight=None)
+
+  def test_step(self, data):
+    x = data
+    model = self(x, training=False)
+    y_pred = model["prediction"]
+    y = tf.eye(y_pred.shape[0])
+    self.compute_loss(x, y, y_pred)
+
+    return self.compute_metrics(x, y, y_pred, sample_weight=None)
