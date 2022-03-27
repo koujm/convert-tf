@@ -21,7 +21,7 @@ HParams = namedtuple("HParams", (
 )
 
 
-UNK_ID = 0
+UNK_TOKEN = "[UNK]"
 
 
 class ConveRT(tf.keras.Model):
@@ -32,10 +32,13 @@ class ConveRT(tf.keras.Model):
 
     with tf.io.gfile.GFile(self.hparams.vocab_path) as f:
       vocab = f.read().splitlines()
+      self.unk_id = vocab.index(UNK_TOKEN)
+
     self.tokenizer = tf_text.FastWordpieceTokenizer(
         vocab=vocab,
         suffix_indicator="##",
         token_out_type=tf.int32,
+        unknown_token=UNK_TOKEN,
         support_detokenization=False)
 
     self.regularizer = tf.keras.regularizers.L2(1e-5)
@@ -126,7 +129,7 @@ class ConveRT(tf.keras.Model):
       x = tf.strings.lower(inputs)
       x = tf.strings.regex_replace(x, r"\d{5,}", "#")
       x = self.tokenizer.tokenize(x)
-      x = x.to_tensor(default_value=UNK_ID)
+      x = x.to_tensor(default_value=self.unk_id)
 
       if training:
         x = x[
@@ -136,7 +139,7 @@ class ConveRT(tf.keras.Model):
               self.hparams.max_sequence_length)
             ]
 
-      unk_mask = tf.math.not_equal(x, UNK_ID)      
+      unk_mask = tf.math.not_equal(x, self.unk_id)
 
       x = self.embedding_layer(x)
       x *= tf.math.sqrt(float(self.hparams.embedding_size))
