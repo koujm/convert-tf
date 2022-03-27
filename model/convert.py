@@ -11,8 +11,6 @@ from model.layers import FeatureEncoder
 
 HParams = namedtuple("HParams", (
   "vocab_path",
-  "context_feature",
-  "response_feature",
   "max_sequence_length",
   "embedding_size",
   "max_attention_spans",
@@ -90,11 +88,11 @@ class ConveRT(tf.keras.Model):
   def call(self, inputs, training=False):
     with tf.name_scope("embed_context"):
       context_embedding, seq_encoding = self._embed_nl(
-          inputs[self.hparams.context_feature], training)
+          inputs["context"], training)
 
     with tf.name_scope("embed_response"):
       response_embedding, _ = self._embed_nl(
-          inputs[self.hparams.response_feature], training)
+          inputs["response"], training)
 
     encoded_context = self.context_feat_encoder(context_embedding)
     encoded_response = self.response_feat_encoder(response_embedding)
@@ -198,10 +196,28 @@ class ConveRT(tf.keras.Model):
 
     return metrics
 
+  def predict_step(self, data):
+    x = data
+
+    output = self(x, training=False)
+    y_pred = output["prediction"]
+
+    return y_pred
+
+  def get_config(self):
+    return {"hparams": self.hparams._asdict()}
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(HParams(**config["hparams"]))
+
+  @tf.function
+  def serve(self, *args, **kwargs):
+    output = self(*args, **kwargs)
+    return output
+
 
 def get_compiled_model(vocab_path,
-                       context_feature,
-                       response_feature,
                        max_steps,
                        steps_per_execution=1):
   optimizer = tf.keras.optimizers.Adadelta(
@@ -217,8 +233,6 @@ def get_compiled_model(vocab_path,
 
   hparams = HParams(
       vocab_path=vocab_path,
-      context_feature=context_feature,
-      response_feature=response_feature,
       max_sequence_length=60,
       embedding_size=512,
       max_attention_spans=[3, 5, 48, 48, 48, 48],
@@ -232,6 +246,7 @@ def get_compiled_model(vocab_path,
       optimizer=optimizer,
       loss=loss,
       metrics=tf.keras.metrics.CategoricalAccuracy(),
+      run_eagerly=False,
       steps_per_execution=steps_per_execution,
       )
 

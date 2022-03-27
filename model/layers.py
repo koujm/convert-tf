@@ -41,6 +41,14 @@ class RelativeBiases(tf.keras.layers.Layer):
 
     return inputs + tf.expand_dims(bias, axis=0)
 
+  def get_config(self):
+    config = super(RelativeBiases, self).get_config()
+    config.update({
+        "max_relative_attention": self.max_relative_attention,
+        "regularizer": self.regularizer,
+        })
+    return config
+
 
 class SelfAttention(tf.keras.layers.Layer):
   """Self attention layer with relative position bias.
@@ -68,11 +76,12 @@ class SelfAttention(tf.keras.layers.Layer):
     self.initializer = initializer
     self.regularizer = regularizer
     self.multi = multi
+    self.dropout = dropout
     
     self.relative_biases = RelativeBiases(
         self.max_relative_attention,
         name="relative_biases")
-    self.dropout = tf.keras.layers.Dropout(dropout) if dropout else None
+    self.dropout_layer = tf.keras.layers.Dropout(dropout) if dropout else None
   
   def build(self, input_shape):
     self.embedding_dim = input_shape[-1]
@@ -140,8 +149,8 @@ class SelfAttention(tf.keras.layers.Layer):
           axis=-2
           )
 
-    if self.dropout:
-      output = self.dropout(output, training=training)
+    if self.dropout_layer:
+      output = self.dropout_layer(output, training=training)
 
     return output
 
@@ -165,6 +174,18 @@ class SelfAttention(tf.keras.layers.Layer):
     weights = tf.expand_dims(weights, axis=-1)
 
     return scores * weights
+
+  def get_config(self):
+    config = super(SelfAttention, self).get_config()
+    config.update({
+      "intermediate_dim": self.intermediate_dim,
+      "max_relative_attention": self.max_relative_attention,
+      "initializer": self.initializer,
+      "regularizer": self.regularizer,
+      "multi": self.multi,
+      "dropout": self.dropout,
+      })
+    return config
     
 
 class MultiHeadAttention(tf.keras.layers.Layer):
@@ -188,6 +209,12 @@ class MultiHeadAttention(tf.keras.layers.Layer):
                dropout=None,
                **kwargs):
     super(MultiHeadAttention, self).__init__(**kwargs)
+    self.num_heads = num_heads
+    self.intermediate_dim = intermediate_dim
+    self.max_relative_attention = max_relative_attention
+    self.initializer = initializer
+    self.regularizer = regularizer
+    self.dropout = dropout
 
     if num_heads <= 0:
       raise ValueError("num_heads must be > 0")
@@ -214,6 +241,18 @@ class MultiHeadAttention(tf.keras.layers.Layer):
 
     return tf.concat(outputs, axis=-1)
 
+  def get_config(self):
+    config = super(MultiHeadAttention, self).get_config()
+    config.update({
+      "num_heads": self.num_heads,
+      "intermediate_dim": self.intermediate_dim,
+      "max_relative_attention": self.max_relative_attention,
+      "initializer": self.initializer,
+      "regularizer": self.regularizer,
+      "dropout": self.dropout,
+      })
+    return config
+
 
 class TransformerBlock(tf.keras.layers.Layer):
   """Transformer block.
@@ -237,6 +276,14 @@ class TransformerBlock(tf.keras.layers.Layer):
                dropout=None,
                **kwargs):
     super(TransformerBlock, self).__init__(**kwargs)
+    self.intermediate_dim = intermediate_dim
+    self.max_relative_attention = max_relative_attention
+    self.hidden_dim = hidden_dim
+    self.initializer = initializer
+    self.regularizer = regularizer
+    self.activation = activation
+    self.dropout = dropout
+
     self.attention = SelfAttention(
         intermediate_dim=intermediate_dim,
         max_relative_attention=max_relative_attention,
@@ -249,10 +296,6 @@ class TransformerBlock(tf.keras.layers.Layer):
     self.layer_norm_2 = tf.keras.layers.LayerNormalization(
         name="layer_norm_2")
     self.activation_fn = activations.get(activation)
-    
-    self.initializer = initializer
-    self.regularizer = regularizer
-    self.hidden_dim = hidden_dim
 
   def build(self, input_shape):
     self.embedding_dim = input_shape[-1]
@@ -281,6 +324,19 @@ class TransformerBlock(tf.keras.layers.Layer):
     output += inputs
     output = self.layer_norm_2(output)
     return output
+
+  def get_config(self):
+    config = super(TransformerBlock, self).get_config()
+    config.update({
+      "intermediate_dim": self.intermediate_dim,
+      "max_relative_attention": self.max_relative_attention,
+      "hidden_dim": self.hidden_dim,
+      "initializer": self.initializer,
+      "regularizer": self.regularizer,
+      "activation": self.activation,
+      "dropout": self.dropout,
+      })
+    return config
 
 
 class PositionalEncodings(tf.keras.layers.Layer):
@@ -329,6 +385,15 @@ class PositionalEncodings(tf.keras.layers.Layer):
     projected_encodings = tf.math.add_n(projected_encodings)
     return inputs + tf.expand_dims(projected_encodings, axis=0)
 
+  def get_config(self):
+    config = super(PositionalEncodings, self).get_config()
+    config.update({
+      "positional_dims": self.positional_dims,
+      "initializer": self.initializer,
+      "regularizer": self.regularizer,
+      })
+    return config
+
 
 class HiddenLayer(tf.keras.layers.Layer):
   """Hidden layer that also supports residual connnection and layer norm.
@@ -351,10 +416,13 @@ class HiddenLayer(tf.keras.layers.Layer):
                **kwargs):
     super(HiddenLayer, self).__init__(**kwargs)
     self.hidden_dim = hidden_dim
+    self.activation = activation
     self.initializer = initializer
     self.regularizer = regularizer
     self.residual = residual
-    self.layer_norm = (
+    self.layer_norm = layer_norm
+
+    self.layer_norm_output = (
         tf.keras.layers.LayerNormalization(name="layer_norm")
         if layer_norm else None)
     self.activation_fn = activations.get(activation)
@@ -382,10 +450,22 @@ class HiddenLayer(tf.keras.layers.Layer):
     if self.residual:
       output += inputs
 
-    if self.layer_norm:
-      output = self.layer_norm(output)
+    if self.layer_norm_output:
+      output = self.layer_norm_output(output)
 
     return output
+
+  def get_config(self):
+    config = super(HiddenLayer, self).get_config()
+    config.update({
+      "hidden_dim": self.hidden_dim,
+      "activation": self.activation,
+      "initializer": self.initializer,
+      "regularizer": self.regularizer,
+      "residual": self.residual,
+      "layer_norm": self.layer_norm,
+      })
+    return config
 
 
 class FeatureEncoder(tf.keras.layers.Layer):
@@ -404,6 +484,7 @@ class FeatureEncoder(tf.keras.layers.Layer):
                regularizer="l2",
                **kwargs):
     super(FeatureEncoder, self).__init__(**kwargs)
+    self.num_hiddens = num_hiddens
     self.output_dim = output_dim
     self.initializer = initializer
     self.regularizer = regularizer
@@ -454,3 +535,13 @@ class FeatureEncoder(tf.keras.layers.Layer):
     output = tf.math.l2_normalize(output, axis=-1)
 
     return output
+
+  def get_config(self):
+    config = super(FeatureEncoder, self).get_config()
+    config.update({
+      "num_hiddens": self.num_hiddens,
+      "output_dim": self.output_dim,
+      "initializer": self.initializer,
+      "regularizer": self.regularizer,
+      })
+    return config

@@ -15,8 +15,6 @@ class ConvertTest(tf.test.TestCase):
 
     hparams = HParams(
         vocab_path=os.path.join(test_dir, "vocab.txt"),
-        context_feature="context",
-        response_feature="response",
         max_sequence_length=10,
         embedding_size=8,
         max_attention_spans=[2, 3, 4, 4],
